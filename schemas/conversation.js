@@ -13,7 +13,7 @@ const conversationSchema = new Schema({
     createdAt: { type: Date, default: Date.now } // Date when the conversation was created
 });
 
-// Create the Conversation model
+
 const conversation = mongoose.model('conversation', conversationSchema);
 
 module.exports = conversation;
