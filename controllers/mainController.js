@@ -169,29 +169,26 @@ module.exports = {
         const {id, user} = req.body;
         const members = await userDb.find({
             _id: {$in: [id, user._id]}
-        }).select('-password');  // Exclude password field
+        }).select('-password');
         try {
-            // Create a new conversation document
+
             const conversation = new conversationsDb({
                 members
             });
             await conversation.save();
 
-            // Update the initiating user's document to include the new conversation
             const updateUser = await userDb.findOneAndUpdate(
                 {_id: user._id},
-                {$push: {conversations: conversation._id}}, // Push the conversation ID instead of the whole document
-                {new: true, upsert: true, projection: {password: 0}} // Corrected "upsert" option
+                {$push: {conversations: conversation._id}},
+                {new: true, upsert: true, projection: {password: 0}}
             );
 
-            // Update the other user's document to include the new conversation
             await userDb.findOneAndUpdate(
                 {_id: id},
-                {$push: {conversations: conversation._id}}, // Push the conversation ID instead of the whole document
+                {$push: {conversations: conversation._id}},
                 {new: true, upsert: true}
             );
 
-            // Respond with success message and the newly created conversation and updated user data
             return res.send({
                 message: "Conversation created successfully",
                 success: true,

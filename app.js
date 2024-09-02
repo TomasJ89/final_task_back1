@@ -1,5 +1,5 @@
 const express = require("express");
-const http = require("http"); // Import http module to create an HTTP server
+const http = require("http");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const {Server} = require("socket.io");
@@ -8,7 +8,7 @@ const mainRouter = require("./routers/mainRouter");
 require("dotenv").config();
 
 const app = express();
-const server = http.createServer(app); // Create the HTTP server
+const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: "http://localhost:5173"
