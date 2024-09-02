@@ -15,7 +15,7 @@ const conversationSchema = new Schema({
         },
         image: {
             type: String,
-            required: false // Assuming this might not always be required
+            required: false
         }
     }],
     messages: [{
