@@ -18,9 +18,8 @@ const {
     deleteConversation,
     updateUser,
     like,
-    addNotification
-
-
+    addNotification,
+    deleteNotification
 } = require("../controllers/mainController")
 
 const {
@@ -53,4 +52,5 @@ Router.post("/delete-conversation",authMiddle,deleteConversation)
 Router.post("/updatedUser",updateUser)
 Router.post("/like",like)
 Router.post("/notification",addNotification)
+Router.post("/delete-notification",authMiddle,deleteNotification)
 module.exports = Router

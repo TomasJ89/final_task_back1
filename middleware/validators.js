@@ -54,18 +54,18 @@ module.exports = {
         }
 
         if (name.length < 4 || name.length > 20)
-            return res.send({message: "Username must be between 4 and 20 characters long", success: false, data: null});
+            return res.send({message: "Bad credentials", success: false, data: null});
 
         if (password.length < 4 || password.length > 20)
             return res.send({
-                message: "Passwords must between 4 and 20 characters long",
+                message: "Bad credentials",
                 success: false,
                 data: null
             });
         const hasUppercase = /[A-Z]/.test(password);
         if (!hasUppercase) {
             return res.send({
-                message: "Password must include at least one uppercase letter",
+                message: "Bad credentials",
                 success: false,
                 data: null
             });
@@ -73,7 +73,7 @@ module.exports = {
         const hasSpecialSymbol = /[!@#$%^&*_+]/.test(password);
         if (!hasSpecialSymbol) {
             return res.send({
-                message: "Password must include at least one special symbol (!@#$%^&*_+)",
+                message: "Bad credentials",
                 success: false,
                 data: null
             });

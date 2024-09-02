@@ -86,14 +86,6 @@ io.on("connection", (socket) => {
         socket.broadcast.emit("updatedProfile");
     })
 
-    socket.on("updatedUser", (recipient) => {
-        const findRecipient = onlineUsers.find(x => x.userId === recipient._id);
-        if (findRecipient) {
-            // io.to(findRecipient.socketId).emit("updatedRecipient", recipient);
-            //trint
-            io.to(findRecipient.socketId).emit("update");
-        }
-    });
 
     socket.on("disconnect", () => {
         onlineUsers = onlineUsers.filter(user => user.socketId !== socket.id);

@@ -53,7 +53,7 @@ module.exports = {
             return res.send({message: "Login success", success: true, token, data: newUser});
         } else {
 
-            return res.send({message: "Passwords do not match", success: false, data: null});
+            return res.send({message: "Bad credentials", success: false, data: null});
         }
 
     },
@@ -69,8 +69,8 @@ module.exports = {
         }
 
         await conversationsDb.updateMany(
-            {"members._id": updatedUser._id}, // Find conversations where the user is a member
-            {$set: {"members.$.image": url}} // Update the username in those conversations
+            {"members._id": updatedUser._id},
+            {$set: {"members.$.image": url}}
         );
 
         res.send({message: "Photo updated", success: true, data: updatedUser});
@@ -79,28 +79,27 @@ module.exports = {
         try {
             const {name, user} = req.body;
 
-            // Check if the new username is already taken
+
             const userExist = await userDb.findOne({username: name});
 
             if (userExist) {
                 return res.send({message: `Username ${name} already taken`, success: false, data: null});
             }
 
-            // Update the username in the user's document
+
             const updatedUser = await userDb.findOneAndUpdate(
                 {_id: user._id},
                 {username: name},
-                {new: true, projection: {password: 0}} // Exclude password from the result
+                {new: true, projection: {password: 0}}
             );
 
             if (!updatedUser) {
                 return res.status(404).send({message: "User not found", success: false});
             }
 
-            // Update the username in all conversations where this user is a member
             await conversationsDb.updateMany(
-                {"members._id": updatedUser._id}, // Find conversations where the user is a member
-                {$set: {"members.$.username": name}} // Update the username in those conversations
+                {"members._id": updatedUser._id},
+                {$set: {"members.$.username": name}}
             );
 
             res.send({message: "Username updated", success: true, data: updatedUser});
@@ -216,10 +215,6 @@ module.exports = {
                 return res.send({message: "Conversations not found", success: false, data: null});
             }
 
-            // const otherUsers = conversations.flatMap(conversation =>
-            //     conversation.members.filter(member => member._id.toString() !== id)
-            // );
-
             return res.send({success: true, data: conversations});
         } catch (error) {
             console.error("Error fetching conversations:", error);
@@ -237,15 +232,6 @@ module.exports = {
                 return res.status(404).send({message: "Conversation not found"});
             }
 
-            // const recipientId = conversation.members.find(memberId => memberId.toString() !== user.id);
-            // const recipient = await userDb.findById(recipientId).select('-password')
-            // if (!recipient) {
-            //     return res.status(404).send({ message: "user not found" });
-            // }
-
-            // If there's only one other member in the conversation, `recipientId` should contain that ID
-            // console.log("gavejas:", recipient);
-
             return res.send({success: true, conversation});
         } catch (error) {
             console.error("Error fetching conversation:", error);
@@ -255,7 +241,7 @@ module.exports = {
     },
 
     newMessage: async (req, res) => {
-        const {conversationsId, text, sender,recipient} = req.body;
+        const {conversationsId, text, sender, recipient} = req.body;
 
         const message = {
             _id: new mongoose.Types.ObjectId(),
@@ -284,99 +270,96 @@ module.exports = {
     },
     deleteConversation: async (req, res) => {
         try {
-            const { id, user } = req.body;
+            const {id, user} = req.body;
 
-            // Ensure ID is an ObjectId
             const conversationId = new mongoose.Types.ObjectId(id);
 
-            // Step 1: Delete the conversation from conversationsDb by its id
             const deletedConversation = await conversationsDb.findByIdAndDelete(conversationId);
 
             if (!deletedConversation) {
-                return res.status(404).send({ success: false, message: "Conversation not found" });
+                return res.status(404).send({success: false, message: "Conversation not found"});
             }
 
-            // Step 2: Remove the conversation ID from the conversations array of all users who have it
-            const result = await userDb.updateMany(
-                { conversations: conversationId }, // Find all users who have this conversation ID
-                { $pull: { conversations: conversationId } } // Remove the conversation ID from their conversations array
+            await userDb.updateMany(
+                {conversations: conversationId},
+                {$pull: {conversations: conversationId}}
+            );
+            await userDb.updateMany(
+                {"notifications.conversationsId": id},
+                {$pull: {notifications: {conversationsId: id}}}
             );
 
-            console.log('Update Result:', result); // Debugging: Check if any documents were modified
 
-            // Step 3: Retrieve the updated user without the password field
-            const updatedUser = await userDb.findById(user._id, { password: 0 });
+            const updatedUser = await userDb.findById(user._id, {password: 0});
 
             if (!updatedUser) {
-                return res.status(404).send({ success: false, message: "User not found" });
+                return res.status(404).send({success: false, message: "User not found"});
             }
 
-            // Step 4: Send the updated user back to the client
-            return res.send({ success: true, message: "Conversation deleted", data: updatedUser });
+            return res.send({success: true, message: "Conversation deleted", data: updatedUser});
         } catch (error) {
             console.error("Error deleting conversation:", error);
-            return res.status(500).send({ success: false, message: "Server error" });
+            return res.status(500).send({success: false, message: "Server error"});
         }
     },
+
 
     updateUser: async (req, res) => {
         const {id} = req.body
-        const updatedUser = await userDb.findById(id, { password: 0 });
+        const updatedUser = await userDb.findById(id, {password: 0});
 
         if (!updatedUser) {
-            return res.status(404).send({ success: false, message: "User not found" });
+            return res.status(404).send({success: false, message: "User not found"});
         }
-        return res.send({ success: true, message: "all good", data: updatedUser })
+        return res.send({success: true, message: "all good", data: updatedUser})
 
     },
-    like: async (req,res) => {
+    like: async (req, res) => {
         try {
-            const { userId, msgId, conversationsId } = req.body;
+            const {userId, msgId, conversationsId} = req.body;
 
-            // Fetch the conversation by ID
             const conversation = await conversationsDb.findById(conversationsId);
 
-            // Check if the conversation exists
             if (!conversation) {
-                return res.status(404).send({ message: "Conversation not found" });
+                return res.status(404).send({message: "Conversation not found"});
             }
 
-            // Find the specific message within the conversation
             const currentMsg = conversation.messages.find(msg => msg._id.toString() === msgId);
             if (!currentMsg) {
-                return res.status(404).send({ message: "Message not found" });
+                return res.status(404).send({message: "Message not found"});
             }
 
-            // Check if the message is already liked by the user
             const hasLiked = currentMsg.likes.some(like => like.user.toString() === userId);
             if (!hasLiked) {
-                // Add a new like to the message
-                currentMsg.likes.push({ user: userId, date: Date.now() });
+
+                currentMsg.likes.push({user: userId, date: Date.now()});
             } else {
                 return
             }
 
             await conversation.save();
 
-            return res.send({ success: true, message: "Message liked successfully", data: null });
+            return res.send({success: true, message: "Message liked successfully", data: currentMsg});
         } catch (error) {
 
             console.error('Error liking message:', error);
-            return res.status(500).send({ message: "Internal server error" });
+            return res.status(500).send({message: "Internal server error"});
         }
 
     },
-    addNotification: async (req,res) => {
-        const{sender,recipient,date,conversationsId,} = req.body
+    addNotification: async (req, res) => {
+        const {sender, recipient, date, conversationsId,text} = req.body
+        console.log("sis",req.body)
         const userSender = await userDb.findById(sender)
         if (!userSender) {
-            return res.status(404).send({ success: false, message: "User not found" });
+            return res.status(404).send({success: false, message: "User not found"});
         }
         const notification = {
-            sender:{name:userSender.username, id:userSender._id },
+            _id: new mongoose.Types.ObjectId(),
+            sender: {name: userSender.username, id: userSender._id},
             date,
             conversationsId,
-            type: "message"
+            type: text? "message": "like"
         }
         const userRecipient = await userDb.findByIdAndUpdate(
             recipient,
@@ -384,11 +367,32 @@ module.exports = {
             {new: true, upsert: true}
         ).select('-password');
         if (!userRecipient) {
-            return res.status(404).send({ success: false, message: "User not found" });
+            return res.status(404).send({success: false, message: "User not found"});
         }
-        return res.send({ success: true, message: "Notification added successfully", data: userRecipient });
+        return res.send({success: true, message: "Notification added successfully", data: userRecipient});
 
+    },
+
+    deleteNotification: async (req, res) => {
+        const {notificationId, user} = req.body;
+
+        try {
+            const id = new mongoose.Types.ObjectId(notificationId);
+            const updatedUser = await userDb.findOneAndUpdate(
+                {_id: user._id},
+                {$pull: {notifications: {_id: id}}},
+                {new: true, projection: {password: 0}}
+            );
+
+            if (!updatedUser) {
+                return res.status(404).send({message: "User not found", success: false});
+            }
+
+            return res.send({success: true, message: "Notification deleted successfully", data: updatedUser});
+        } catch (error) {
+            console.error("Error deleting notification", error);
+            return res.status(500).send({message: "Server error", success: false});
+        }
     }
-
 
 }

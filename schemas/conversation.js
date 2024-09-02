@@ -6,7 +6,7 @@ const conversationSchema = new Schema({
 
     members: [{
         _id: {
-            type: mongoose.Schema.Types.ObjectId, // Assuming you want to store ObjectIds
+            type: mongoose.Schema.Types.ObjectId,
             required: true
         },
         username: {
