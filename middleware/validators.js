@@ -150,6 +150,16 @@ module.exports = {
 
         next()
     },
+    newMessageValidate: (req, res, next) => {
+        const {text} = req.body
+        if (!text) {
+            return res.send({message: "Message text not found", success: false, data: null});
+        }
+        if (text.length < 1 || text.length > 200)
+            return res.send({message: "Text must be between 1 and 200 characters long", success: false, data: null});
+
+        next()
+    },
 
 
 }

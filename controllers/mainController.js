@@ -1,7 +1,8 @@
 const userDb = require("../schemas/userSchema")
-
+const conversationsDb = require("../schemas/conversation")
 const bcrypt = require("bcrypt")
 const jwt = require("jsonwebtoken")
+const mongoose = require('mongoose');
 
 
 module.exports = {
@@ -39,7 +40,7 @@ module.exports = {
         if (passValid) {
 
             const newUser = {
-                id: user._id,
+                _id: user._id,
                 username: user.username,
             }
 
@@ -47,6 +48,7 @@ module.exports = {
 
             newUser.image = user.image
             newUser.conversations = user.conversations
+            newUser.notifications = user.notifications
 
             return res.send({message: "Login success", success: true, token, data: newUser});
         } else {
@@ -58,34 +60,59 @@ module.exports = {
     updatePhoto: async (req, res) => {
         const {url, user} = req.body
         let updatedUser = await userDb.findOneAndUpdate(
-            {_id: user.id},
+            {_id: user._id},
             {image: url},
             {new: true, projection: {password: 0}}
+        );
+        if (!updatedUser) {
+            return res.status(404).send({message: "User not found", success: false});
+        }
+
+        await conversationsDb.updateMany(
+            {"members._id": updatedUser._id}, // Find conversations where the user is a member
+            {$set: {"members.$.image": url}} // Update the username in those conversations
         );
 
         res.send({message: "Photo updated", success: true, data: updatedUser});
     },
     updateUserName: async (req, res) => {
-        const {name, user} = req.body
-        const userExist = await userDb.findOne({username: name})
+        try {
+            const {name, user} = req.body;
 
-        if (userExist) {
-            return res.send({message: `Username ${name} already taken`, success: false, data: null});
+            // Check if the new username is already taken
+            const userExist = await userDb.findOne({username: name});
+
+            if (userExist) {
+                return res.send({message: `Username ${name} already taken`, success: false, data: null});
+            }
+
+            // Update the username in the user's document
+            const updatedUser = await userDb.findOneAndUpdate(
+                {_id: user._id},
+                {username: name},
+                {new: true, projection: {password: 0}} // Exclude password from the result
+            );
+
+            if (!updatedUser) {
+                return res.status(404).send({message: "User not found", success: false});
+            }
+
+            // Update the username in all conversations where this user is a member
+            await conversationsDb.updateMany(
+                {"members._id": updatedUser._id}, // Find conversations where the user is a member
+                {$set: {"members.$.username": name}} // Update the username in those conversations
+            );
+
+            res.send({message: "Username updated", success: true, data: updatedUser});
+        } catch (error) {
+            console.error("Error updating username:", error);
+            res.status(500).send({message: "Internal server error", success: false});
         }
-
-        const updatedUser = await userDb.findOneAndUpdate(
-            {_id: user.id},
-            {username: name},
-            {new: true, projection: {password: 0}}
-        );
-
-        res.send({message: "Username updated", success: true, data: updatedUser});
     },
 
     updatePassword: async (req, res) => {
         const {oldPassword, newPassword, user} = req.body
-        console.log(req.body)
-        const userInDb = await userDb.findById(user.id)
+        const userInDb = await userDb.findById(user._id)
         if (!userInDb) {
             return res.send({message: "User not found", success: false, data: null});
         }
@@ -105,127 +132,263 @@ module.exports = {
 
     },
 
-  autoLogin: async (req, res) => {
+    autoLogin: async (req, res) => {
         try {
-            const { user } = req.body;
+            const {user} = req.body;
             if (!user) {
-                return res.send({ message: "User data missing", success: false });
+                return res.send({message: "User data missing", success: false});
             }
-            const userInDb = await userDb.findOne({ _id: user.id }, { projection: { password: 0 } });
+            const userInDb = await userDb.findOne({_id: user._id}, {projection: {password: 0}});
             if (!userInDb) {
-                return res.send({ message: "User not found", success: false, data: null });
+                return res.send({message: "User not found", success: false, data: null});
             }
             const newUser = {
-                id: userInDb._id,
+                _id: userInDb._id,
                 username: userInDb.username,
             };
             const token = jwt.sign(newUser, process.env.JWT_SECRET);
-            res.send({ message: "User found successfully", success: true, token, data: userInDb });
+            res.send({message: "User found successfully", success: true, token, data: userInDb});
         } catch (error) {
             console.error('Auto-login backend error:', error);
-            res.status(500).send({ message: "Internal server error", success: false });
+            res.status(500).send({message: "Internal server error", success: false});
         }
     },
-    allUsers: async (req,res) =>{
+    allUsers: async (req, res) => {
         const users = await userDb.find()
         return res.send({message: "Users fetched", success: true, data: users});
     },
-    singleUser: async (req,res) => {
+    singleUser: async (req, res) => {
         const {username} = req.params
-        const user = await userDb.findOne({ username }, { password: 0 });
+        const user = await userDb.findOne({username}, {password: 0});
         if (!user) {
-            return res.send({ message: "User not found", success: false, data: null });
+            return res.send({message: "User not found", success: false, data: null});
         }
         return res.send({message: "User fetched", success: true, data: user});
+    },
+
+    createConversation: async (req, res) => {
+        const {id, user} = req.body;
+        const members = await userDb.find({
+            _id: {$in: [id, user._id]}
+        }).select('-password');  // Exclude password field
+        try {
+            // Create a new conversation document
+            const conversation = new conversationsDb({
+                members
+            });
+            await conversation.save();
+
+            // Update the initiating user's document to include the new conversation
+            const updateUser = await userDb.findOneAndUpdate(
+                {_id: user._id},
+                {$push: {conversations: conversation._id}}, // Push the conversation ID instead of the whole document
+                {new: true, upsert: true, projection: {password: 0}} // Corrected "upsert" option
+            );
+
+            // Update the other user's document to include the new conversation
+            await userDb.findOneAndUpdate(
+                {_id: id},
+                {$push: {conversations: conversation._id}}, // Push the conversation ID instead of the whole document
+                {new: true, upsert: true}
+            );
+
+            // Respond with success message and the newly created conversation and updated user data
+            return res.send({
+                message: "Conversation created successfully",
+                success: true,
+                data: {conversation, updateUser}
+            });
+        } catch (error) {
+            console.error("Error creating conversation:", error);
+            return res.status(500).send({message: "Server error", success: false});
+        }
+    },
+    allConversations: async (req, res) => {
+        try {
+            const {id} = req.params;
+            const objectId = new mongoose.Types.ObjectId(id);
+
+            const conversations = await conversationsDb.find({
+                "members._id": objectId
+            });
+
+            if (!conversations || conversations.length === 0) {
+                return res.send({message: "Conversations not found", success: false, data: null});
+            }
+
+            // const otherUsers = conversations.flatMap(conversation =>
+            //     conversation.members.filter(member => member._id.toString() !== id)
+            // );
+
+            return res.send({success: true, data: conversations});
+        } catch (error) {
+            console.error("Error fetching conversations:", error);
+            return res.status(500).send({success: false, message: "Server error"});
+        }
+    },
+    singleConversation: async (req, res) => {
+
+        try {
+            const {conversationsId, user} = req.body;
+
+            const conversation = await conversationsDb.findById(conversationsId);
+
+            if (!conversation) {
+                return res.status(404).send({message: "Conversation not found"});
+            }
+
+            // const recipientId = conversation.members.find(memberId => memberId.toString() !== user.id);
+            // const recipient = await userDb.findById(recipientId).select('-password')
+            // if (!recipient) {
+            //     return res.status(404).send({ message: "user not found" });
+            // }
+
+            // If there's only one other member in the conversation, `recipientId` should contain that ID
+            // console.log("gavejas:", recipient);
+
+            return res.send({success: true, conversation});
+        } catch (error) {
+            console.error("Error fetching conversation:", error);
+            return res.status(500).send({message: "Internal server error"});
+        }
+
+    },
+
+    newMessage: async (req, res) => {
+        const {conversationsId, text, sender,recipient} = req.body;
+
+        const message = {
+            _id: new mongoose.Types.ObjectId(),
+            text,
+            sender,
+            recipient,
+            date: Date.now()
+        };
+
+        try {
+            const updateConv = await conversationsDb.findByIdAndUpdate(
+                conversationsId,
+                {$push: {messages: message}},
+                {new: true, upsert: true}
+            );
+
+            if (!updateConv) {
+                return res.status(404).send({message: "Conversation not found"});
+            }
+
+            return res.send({success: true, data: updateConv, message});
+
+        } catch (error) {
+            return res.status(500).send({message: "Internal server error", error});
+        }
+    },
+    deleteConversation: async (req, res) => {
+        try {
+            const { id, user } = req.body;
+
+            // Ensure ID is an ObjectId
+            const conversationId = new mongoose.Types.ObjectId(id);
+
+            // Step 1: Delete the conversation from conversationsDb by its id
+            const deletedConversation = await conversationsDb.findByIdAndDelete(conversationId);
+
+            if (!deletedConversation) {
+                return res.status(404).send({ success: false, message: "Conversation not found" });
+            }
+
+            // Step 2: Remove the conversation ID from the conversations array of all users who have it
+            const result = await userDb.updateMany(
+                { conversations: conversationId }, // Find all users who have this conversation ID
+                { $pull: { conversations: conversationId } } // Remove the conversation ID from their conversations array
+            );
+
+            console.log('Update Result:', result); // Debugging: Check if any documents were modified
+
+            // Step 3: Retrieve the updated user without the password field
+            const updatedUser = await userDb.findById(user._id, { password: 0 });
+
+            if (!updatedUser) {
+                return res.status(404).send({ success: false, message: "User not found" });
+            }
+
+            // Step 4: Send the updated user back to the client
+            return res.send({ success: true, message: "Conversation deleted", data: updatedUser });
+        } catch (error) {
+            console.error("Error deleting conversation:", error);
+            return res.status(500).send({ success: false, message: "Server error" });
+        }
+    },
+
+    updateUser: async (req, res) => {
+        const {id} = req.body
+        const updatedUser = await userDb.findById(id, { password: 0 });
+
+        if (!updatedUser) {
+            return res.status(404).send({ success: false, message: "User not found" });
+        }
+        return res.send({ success: true, message: "all good", data: updatedUser })
+
+    },
+    like: async (req,res) => {
+        try {
+            const { userId, msgId, conversationsId } = req.body;
+
+            // Fetch the conversation by ID
+            const conversation = await conversationsDb.findById(conversationsId);
+
+            // Check if the conversation exists
+            if (!conversation) {
+                return res.status(404).send({ message: "Conversation not found" });
+            }
+
+            // Find the specific message within the conversation
+            const currentMsg = conversation.messages.find(msg => msg._id.toString() === msgId);
+            if (!currentMsg) {
+                return res.status(404).send({ message: "Message not found" });
+            }
+
+            // Check if the message is already liked by the user
+            const hasLiked = currentMsg.likes.some(like => like.user.toString() === userId);
+            if (!hasLiked) {
+                // Add a new like to the message
+                currentMsg.likes.push({ user: userId, date: Date.now() });
+            } else {
+                return
+            }
+
+            await conversation.save();
+
+            return res.send({ success: true, message: "Message liked successfully", data: null });
+        } catch (error) {
+
+            console.error('Error liking message:', error);
+            return res.status(500).send({ message: "Internal server error" });
+        }
+
+    },
+    addNotification: async (req,res) => {
+        const{sender,recipient,date,conversationsId,} = req.body
+        const userSender = await userDb.findById(sender)
+        if (!userSender) {
+            return res.status(404).send({ success: false, message: "User not found" });
+        }
+        const notification = {
+            sender:{name:userSender.username, id:userSender._id },
+            date,
+            conversationsId,
+            type: "message"
+        }
+        const userRecipient = await userDb.findByIdAndUpdate(
+            recipient,
+            {$push: {notifications: notification}},
+            {new: true, upsert: true}
+        ).select('-password');
+        if (!userRecipient) {
+            return res.status(404).send({ success: false, message: "User not found" });
+        }
+        return res.send({ success: true, message: "Notification added successfully", data: userRecipient });
+
     }
-    // addRecipe: async (req, res) => {
-    //     const {name, images: recImages, ingredients, instructions, user} = req.body;
-    //     const userInDB = await userDb.findOne({_id: user.id});
-    //
-    //     if (!userInDB) {
-    //         return res.send({message: "user not found", success: false, data: null});
-    //     }
-    //
-    //     const ingredientsArray = ingredients.split(',')
-    //         .map(ingredient => ingredient.trim())
-    //         .filter(ingredient => ingredient.length > 0);
-    //
-    //     const newRecipe = new recipesDb({
-    //         name,
-    //         images: recImages,
-    //         ingredients: ingredientsArray,
-    //         instructions,
-    //         date: Date.now(),
-    //         author: userInDB.username
-    //     });
-    //
-    //     await newRecipe.save();
-    //
-    //     let newUser = await userDb.findOneAndUpdate(
-    //         {_id: userInDB._id},
-    //         {$push: {recipes: newRecipe._id}},
-    //         {new: true, projection: {password: 0}}
-    //     );
-    //
-    //     return res.send({message: "recipe added", success: true, data: newUser});
-    // },
-    // recipes: async (req, res) => {
-    //     const recipes = await recipesDb.find()
-    //     return res.send({message: "recipes fetched", success: true, data: recipes});
-    // },
-    // singleRecipe: async (req, res) => {
-    //     const {id} = req.params
-    //     console.log(id)
-    //     const recipe = await recipesDb.findOne({_id: id})
-    //     if (!recipe) {
-    //         res.send({message: "recipe not found", success: false, data: null});
-    //     } else {
-    //         res.send({message: "recipe found", success: true, data: recipe});
-    //     }
-    //
-    // },
-    //
-    // addRating: async (req, res) => {
-    //     const {id, rating, user} = req.body
-    //     console.log(req.body)
-    //     const recipe = await recipesDb.findOneAndUpdate(
-    //         {_id: id},
-    //         {
-    //             $push: {
-    //                 ratings: {
-    //                     rating,
-    //                     ratedFrom: user.username
-    //                 }
-    //             }
-    //         },
-    //         {new: true}
-    //     )
-    //     res.send({message: "recipe rated", success: true, data: recipe});
-    // },
-    //
-    // addComment: async (req, res) => {
-    //     const {recipeId, comment, user} = req.body
-    //     console.log(req.body)
-    //     const userInDB = await userDb.findOne({_id: user.id})
-    //
-    //     if (!userInDB) {
-    //         return res.send({message: "user not found", success: false, data: null});
-    //     }
-    //
-    //     const recipe = await recipesDb.findOneAndUpdate(
-    //         {_id: recipeId},
-    //         {
-    //             $push: {
-    //                 comments: {
-    //                     comment,
-    //                     sender: userInDB.username,
-    //                     timestamp:Date.now()
-    //                 }
-    //             }
-    //         },
-    //         {new: true}
-    //     )
-    //     res.send({message: "recipe rated", success: true, data: recipe});
-    // },
+
 
 }

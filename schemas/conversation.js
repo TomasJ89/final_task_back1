@@ -1,16 +1,34 @@
 const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
-// Conversation Schema
+
 const conversationSchema = new Schema({
-    members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }], // Array of users participating in the conversation
-    messages: [{
-        text: { type: String, required: true }, // The content of the message
-        sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Reference to the User model
-        date: { type: Date, default: Date.now }, // Date when the message was sent
-        likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }] // Array of users who liked the message
+
+    members: [{
+        _id: {
+            type: mongoose.Schema.Types.ObjectId, // Assuming you want to store ObjectIds
+            required: true
+        },
+        username: {
+            type: String,
+            required: true
+        },
+        image: {
+            type: String,
+            required: false // Assuming this might not always be required
+        }
     }],
-    createdAt: { type: Date, default: Date.now } // Date when the conversation was created
+    messages: [{
+        text: { type: String, required: true },
+        sender: { type: mongoose.Schema.Types.ObjectId, required: true },
+        recipient: { type: mongoose.Schema.Types.ObjectId, required: true },
+        date: { type: Date, required: true },
+        likes: [{
+            user: { type: mongoose.Schema.Types.ObjectId, required: true },
+            date: { type: Date, required: true }
+        }]
+    }],
+    createdAt: { type: Date, default: Date.now }
 });
 
 
