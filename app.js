@@ -11,7 +11,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:5173"
+        origin: "http://localhost:5174"
     }
 });
 
@@ -95,6 +95,13 @@ io.on("connection", (socket) => {
 });
 
 
-server.listen(2000, () => {
-    console.log("Server is running on http://localhost:2000");
+// server.listen(2000, () => {
+//     console.log("Server is running on http://localhost:2000");
+// });
+// Use the environment variable PORT or default to 2000
+const PORT = process.env.PORT || 2000;
+
+// Bind the server to 0.0.0.0 and the correct port
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
 });
