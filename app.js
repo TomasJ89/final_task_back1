@@ -110,6 +110,7 @@
 // server.listen(PORT, "0.0.0.0", () => {
 //   console.log(`Server is running on http://localhost:${PORT}`);
 // });
+
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -122,14 +123,14 @@ require("dotenv").config();
 const app = express();
 const server = http.createServer(app);
 
-// Define local and production hosts
-const localHost = "http://localhost:5173";
-const productionHost = "https://final-task-back1.onrender.com";
+// Define front-end origins for local and production environments
+const localFrontEnd = "http://localhost:5173";
+const productionFrontEnd = "https://final-task-front.onrender.com"; // Update to front-end domain
 
-// Allow both local and production origins
+// Allow both local and production origins for Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: [localHost, productionHost], // Add both localhost and production URL
+    origin: [localFrontEnd, productionFrontEnd],
     methods: ["GET", "POST"],
     credentials: true, // Include credentials if needed (e.g., cookies)
   },
@@ -145,11 +146,14 @@ mongoose
     console.error("DB connection error:", err);
   });
 
-// Middleware setup
-app.use(cors({
-  origin: [localHost, productionHost], // Allow both localhost and production in HTTP CORS
-  credentials: true,
-}));
+// Middleware setup for Express.js
+app.use(
+  cors({
+    origin: [localFrontEnd, productionFrontEnd], // Allow both local and production in HTTP CORS
+    credentials: true, // Allow cookies or authentication if needed
+  })
+);
+
 app.use(express.json());
 app.use("/", mainRouter);
 
@@ -231,5 +235,5 @@ const PORT = process.env.PORT || 2000;
 
 // Bind the server to 0.0.0.0 and the correct port
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
